@@ -1,0 +1,264 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>RS Otorisasi</title>
+<style>
+  body { font-family: system-ui, sans-serif; margin: 0; background: #f3f5f7; color: #1d2733; font-size: 14px; }
+  header { background: #0f5c4d; color: #fff; padding: 12px 20px; display: flex; justify-content: space-between; align-items: center; }
+  header h1 { font-size: 18px; margin: 0; }
+  main { display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); gap: 16px; padding: 16px; }
+  section { background: #fff; border: 1px solid #d9dee3; border-radius: 6px; padding: 14px; margin-bottom: 16px; }
+  h2 { font-size: 15px; margin: 0 0 10px; }
+  table { border-collapse: collapse; width: 100%; }
+  th, td { border-bottom: 1px solid #e5e8eb; padding: 5px 6px; text-align: left; vertical-align: top; }
+  th { background: #f7f9fa; font-weight: 600; }
+  input, select, button { font: inherit; padding: 4px 8px; }
+  button { cursor: pointer; border: 1px solid #0f5c4d; background: #0f5c4d; color: #fff; border-radius: 4px; }
+  button.secondary { background: #fff; color: #0f5c4d; }
+  button.danger { background: #b42318; border-color: #b42318; }
+  .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-bottom: 8px; }
+  .chip { font-size: 12px; padding: 2px 8px; }
+  .badge { display: inline-block; padding: 1px 6px; border-radius: 3px; font-size: 12px; background: #e6f0ee; }
+  .s2 { background: #fff1d6; } .s3 { background: #fde2e1; }
+  pre { background: #10181f; color: #d5e2ea; padding: 10px; border-radius: 4px; overflow: auto; font-size: 12px; margin: 6px 0; white-space: pre-wrap; word-break: break-all; }
+  .log-entry { border-left: 4px solid #2e7d32; padding-left: 8px; margin-bottom: 10px; }
+  .log-entry.err { border-color: #b42318; }
+  #log pre { max-height: 170px; }
+  .muted { color: #66717c; font-size: 12px; }
+  .hidden { display: none; }
+  #google { background: #fff; color: #1d2733; border-color: #c4c9ce; text-decoration: none; padding: 5px 10px; border-radius: 4px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>RS Otorisasi: Sistem Rekam Medis</h1>
+  <span id="whoami">Belum login</span>
+</header>
+<main>
+  <div>
+    <section id="login-box">
+      <h2>Login</h2>
+      <form id="login-form" class="row">
+        <input id="username" placeholder="username" autocomplete="username">
+        <input id="password" type="password" placeholder="password" autocomplete="current-password">
+        <button>Login (JWT)</button>
+        <a id="google" href="/api/auth/google">Masuk dengan Google</a>
+      </form>
+      <div class="row muted" id="demo-accounts">Akun demo:</div>
+    </section>
+
+    <section id="records-box" class="hidden">
+      <h2>Rekam Medis yang Dapat Anda Akses</h2>
+      <table><thead><tr><th>ID</th><th>Pasien</th><th>Ruang</th><th>Departemen</th><th>Sensitivitas</th><th>Diagnosis</th><th>Catatan</th><th>Aksi</th></tr></thead>
+        <tbody id="records"></tbody></table>
+      <div class="row" style="margin-top:10px">
+        <span>Uji akses ID:</span><input id="manual-id" type="number" min="1" style="width:70px" value="1">
+        <button class="secondary" data-manual="read">GET</button>
+        <button class="secondary" data-manual="note">Tambah catatan</button>
+        <button class="danger" data-manual="delete">DELETE</button>
+      </div>
+    </section>
+
+    <section id="create-box" class="hidden">
+      <h2>Buat Rekam Medis</h2>
+      <form id="create-form" class="row">
+        <input name="patientId" placeholder="ID pasien (P004)" style="width:110px">
+        <input name="patientName" placeholder="Nama pasien">
+        <input name="diagnosis" placeholder="Diagnosis">
+        <input name="ward" placeholder="Ruang (default: ruang Anda)" style="width:180px">
+        <input name="department" placeholder="Departemen (default: milik Anda)" style="width:210px">
+        <select name="sensitivity"><option value="1">1 Umum</option><option value="2">2 Sensitif</option><option value="3">3 Rahasia</option></select>
+        <button>Simpan</button>
+      </form>
+    </section>
+
+    <section id="admin-box" class="hidden">
+      <h2>Manajemen User (khusus admin)</h2>
+      <button class="secondary" id="load-users">Muat daftar user</button>
+      <table style="margin-top:8px"><thead><tr><th>User</th><th>Role</th><th>Departemen</th><th>Ruang</th><th>Clearance</th><th>onDuty</th><th>Pasien</th><th></th></tr></thead>
+        <tbody id="users"></tbody></table>
+    </section>
+  </div>
+
+  <div>
+    <section>
+      <h2>Log Request API</h2>
+      <div id="log"></div>
+    </section>
+    <section id="session-box" class="hidden">
+      <h2>Sesi &amp; Access Token</h2>
+      <div id="profile"></div>
+      <div class="row" style="margin-top:8px">
+        <button class="secondary" id="refresh">Refresh token</button>
+        <button class="secondary" id="logout">Logout</button>
+        <span class="muted" id="expiry"></span>
+      </div>
+      <div class="muted">Access token (JWT):</div>
+      <pre id="raw-token"></pre>
+      <div class="muted">Isi token (header &amp; payload hasil decode base64url):</div>
+      <pre id="decoded"></pre>
+    </section>
+  </div>
+</main>
+
+<script>
+const $ = (s) => document.querySelector(s);
+const SENS = { 1: "Umum", 2: "Sensitif", 3: "Rahasia" };
+const DEMO = [["admin", "admin123"], ["dr.andi", "dokter123"], ["dr.sari", "dokter123"], ["ns.budi", "perawat123"],
+  ["ns.citra", "perawat123"], ["dewi", "pasien123"], ["eko", "pasien123"]];
+
+// Token disimpan di sessionStorage (hilang saat tab ditutup). Semua data ditampilkan via textContent untuk mencegah XSS.
+let tokens = JSON.parse(sessionStorage.getItem("tokens") || "null");
+let me = null;
+
+function el(tag, props = {}, ...children) {
+  const e = Object.assign(document.createElement(tag), props);
+  e.append(...children.filter((c) => c != null));
+  return e;
+}
+
+function log(method, path, status, body) {
+  const entry = el("div", { className: "log-entry" + (status >= 400 ? " err" : "") },
+    el("strong", { textContent: `${method} ${path} -> ${status}` }),
+    el("pre", { textContent: JSON.stringify(body, null, 2) }));
+  $("#log").prepend(entry);
+  while ($("#log").children.length > 5) $("#log").lastChild.remove();
+}
+
+async function api(method, path, body) {
+  const headers = { "Content-Type": "application/json" };
+  if (tokens) headers.Authorization = `Bearer ${tokens.accessToken}`;
+  const res = await fetch(path, { method, headers, body: body ? JSON.stringify(body) : undefined });
+  const data = await res.json().catch(() => ({}));
+  const shown = path.startsWith("/api/auth/") ? { ...data, accessToken: data.accessToken && "(lihat panel token)", refreshToken: data.refreshToken && "(disembunyikan)" } : data;
+  log(method, path, res.status, shown);
+  return { ok: res.ok, status: res.status, data };
+}
+
+function decodeJwt(t) {
+  const part = (p) => JSON.parse(atob(p.replace(/-/g, "+").replace(/_/g, "/")));
+  const [h, p] = t.split(".");
+  return { header: part(h), payload: part(p) };
+}
+
+function setTokens(t) {
+  tokens = t;
+  if (t) sessionStorage.setItem("tokens", JSON.stringify(t)); else sessionStorage.removeItem("tokens");
+}
+
+async function loadSession() {
+  const show = !!tokens;
+  for (const id of ["records-box", "create-box", "admin-box", "session-box"]) $("#" + id).classList.toggle("hidden", !show);
+  $("#login-box").classList.toggle("hidden", show);
+  if (!show) { $("#whoami").textContent = "Belum login"; return; }
+  const r = await api("GET", "/api/me");
+  if (!r.ok) { setTokens(null); return loadSession(); }
+  me = r.data.user;
+  $("#whoami").textContent = `${me.name} (${me.role})`;
+  const attrs = [["Username", me.username], ["Role", me.role], ["Departemen", me.department], ["Ruang", me.ward],
+    ["Clearance", me.clearance], ["onDuty", me.onDuty], ["ID Pasien", me.patientId], ["Login Google", me.googleId ? "ya" : "tidak"]];
+  $("#profile").replaceChildren(el("table", {}, ...attrs.filter(([, v]) => v !== undefined).map(([k, v]) =>
+    el("tr", {}, el("th", { textContent: k }), el("td", { textContent: String(v ?? "-") })))));
+  $("#raw-token").textContent = tokens.accessToken;
+  $("#decoded").textContent = JSON.stringify(decodeJwt(tokens.accessToken), null, 2);
+  loadRecords();
+}
+
+async function loadRecords() {
+  const r = await api("GET", "/api/records");
+  const rows = (r.ok ? r.data : []).map((rec) => el("tr", {},
+    el("td", { textContent: rec.id }), el("td", { textContent: `${rec.patientName} (${rec.patientId})` }),
+    el("td", { textContent: rec.ward }), el("td", { textContent: rec.department }),
+    el("td", {}, el("span", { className: `badge s${rec.sensitivity}`, textContent: `${rec.sensitivity} ${SENS[rec.sensitivity]}` })),
+    el("td", { textContent: rec.diagnosis }),
+    el("td", { textContent: rec.notes.map((n) => `${n.by}: ${n.text}`).join("\n") || "-" }),
+    el("td", {},
+      el("button", { className: "secondary chip", textContent: "Catatan", onclick: () => addNote(rec.id) }), " ",
+      el("button", { className: "danger chip", textContent: "Hapus", onclick: () => del(rec.id) }))));
+  $("#records").replaceChildren(...rows);
+}
+
+async function addNote(id) {
+  const text = prompt(`Catatan perawatan untuk rekam medis #${id}:`, "Pasien stabil, observasi tanda vital");
+  if (text) { await api("POST", `/api/records/${id}/notes`, { text }); loadRecords(); }
+}
+
+async function del(id) {
+  if (confirm(`Hapus rekam medis #${id}?`)) { await api("DELETE", `/api/records/${id}`); loadRecords(); }
+}
+
+async function loadUsers() {
+  const r = await api("GET", "/api/admin/users");
+  if (!r.ok) return $("#users").replaceChildren();
+  $("#users").replaceChildren(...r.data.map((u) => {
+    const role = el("select", {}, ...["admin", "dokter", "perawat", "pasien"].map((x) => el("option", { value: x, textContent: x, selected: u.role === x })));
+    const dept = el("input", { value: u.department ?? "", size: 12 });
+    const ward = el("input", { value: u.ward ?? "", size: 8 });
+    const cl = el("select", {}, ...[1, 2, 3].map((x) => el("option", { value: x, textContent: x, selected: u.clearance === x })));
+    const duty = el("input", { type: "checkbox", checked: !!u.onDuty });
+    const pid = el("input", { value: u.patientId ?? "", size: 5 });
+    const save = el("button", { className: "chip", textContent: "Simpan", onclick: async () => {
+      await api("PATCH", `/api/admin/users/${u.id}`, { role: role.value, department: dept.value || null, ward: ward.value || null,
+        clearance: Number(cl.value), onDuty: duty.checked, patientId: pid.value || null });
+      loadUsers();
+    } });
+    return el("tr", {}, el("td", { textContent: u.username }), el("td", {}, role), el("td", {}, dept), el("td", {}, ward),
+      el("td", {}, cl), el("td", {}, duty), el("td", {}, pid), el("td", {}, save));
+  }));
+}
+
+function tickExpiry() {
+  if (!tokens) return;
+  const { exp } = decodeJwt(tokens.accessToken).payload;
+  const s = exp - Math.floor(Date.now() / 1000);
+  $("#expiry").textContent = s > 0 ? `Access token kedaluwarsa dalam ${Math.floor(s / 60)}m ${s % 60}s` : "Access token sudah kedaluwarsa, klik Refresh token";
+}
+
+$("#login-form").onsubmit = async (e) => {
+  e.preventDefault();
+  const r = await api("POST", "/api/auth/login", { username: $("#username").value, password: $("#password").value });
+  if (r.ok) { setTokens(r.data); loadSession(); }
+};
+$("#refresh").onclick = async () => {
+  const r = await api("POST", "/api/auth/refresh", { refreshToken: tokens.refreshToken });
+  if (r.ok) { setTokens(r.data); loadSession(); }
+};
+$("#logout").onclick = async () => {
+  await api("POST", "/api/auth/logout", { refreshToken: tokens.refreshToken });
+  setTokens(null); loadSession();
+};
+$("#create-form").onsubmit = async (e) => {
+  e.preventDefault();
+  const body = Object.fromEntries(new FormData(e.target));
+  body.sensitivity = Number(body.sensitivity);
+  await api("POST", "/api/records", body);
+  loadRecords();
+};
+$("#load-users").onclick = loadUsers;
+document.querySelectorAll("[data-manual]").forEach((b) => b.onclick = () => {
+  const id = $("#manual-id").value;
+  if (b.dataset.manual === "read") api("GET", `/api/records/${id}`);
+  if (b.dataset.manual === "note") addNote(id);
+  if (b.dataset.manual === "delete") del(id);
+});
+for (const [u, p] of DEMO) {
+  $("#demo-accounts").append(el("button", { className: "secondary chip", type: "button", textContent: u,
+    onclick: () => { $("#username").value = u; $("#password").value = p; } }));
+}
+
+// Hasil redirect Google OAuth: token dikirim lewat fragment URL (#accessToken=...)
+const frag = new URLSearchParams(location.hash.slice(1));
+if (frag.get("accessToken")) {
+  setTokens({ accessToken: frag.get("accessToken"), refreshToken: frag.get("refreshToken") });
+  log("GET", "/api/auth/google/callback", 302, { message: "Login Google berhasil, JWT aplikasi diterima" });
+} else if (frag.get("error")) {
+  log("GET", "/api/auth/google/callback", 401, { error: frag.get("error") });
+}
+history.replaceState(null, "", "/");
+setInterval(tickExpiry, 1000);
+loadSession();
+</script>
+</body>
+</html>
